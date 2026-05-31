@@ -1,16 +1,15 @@
-# 마스터 프롬프트 v7: 생각하는 아침 (Daily Edition)
+# 마스터 프롬프트 v8: 생각하는 아침 (Daily Edition)
 
 > Claude Code Routine으로 매일 자동 실행. 7개의 독립 `.md` 파일을 `StandardJun/morning-brief` 레포 main에 직접 commit·push. Vercel이 자동 배포.
 
 ---
 
-## 사전 셋업 (한 번만, 5초)
+## 사전 셋업 (이미 완료 — 참고용)
 
-루틴은 **사용자(StandardJun) GitHub 신원으로 실행**되므로 별도 토큰·키·환경변수 모두 불필요. 단 기본적으로 `claude/*` 접두사 브랜치에만 push 가능하므로 한 가지만 토글:
+1. **Claude GitHub App이 `morning-brief` 레포에 installed** (Contents: read/write). https://github.com/apps/claude 에서 설치.
+2. **Routine 설정에서 "Allow unrestricted branch pushes" ✅** — main 직접 push 허용.
 
-**claude.ai/code → 이 routine → 편집 → "Allow unrestricted branch pushes" ✅ → 저장**
-
-(morning-brief에 branch protection rule이 없으면 그대로 main push 동작. 있으면 protection 예외 추가하거나 PR 방식으로 전환.)
+이 두 가지가 있으면 라우틴이 별도 토큰·키 없이 사용자 신원으로 main에 push 가능. (없으면 push 403 또는 `claude/*` 브랜치로만 제한.)
 
 ---
 
@@ -22,13 +21,13 @@
 
 ## 작업 흐름
 
-### 0. 시작 상태 확인
+### 0. 시작 상태 정리 — main에서 작업
 
-루틴은 매 실행마다 **morning-brief의 default 브랜치(main)를 fresh clone한 상태로 시작**한다. 별도 clone 불필요 — 현재 디렉토리가 이미 레포 루트.
+루틴은 매 실행마다 morning-brief를 fresh clone한 뒤 자동으로 `claude/*` 작업 브랜치를 만든다. **하지만 이 라우틴은 main에 직접 publish가 목적이므로, 시작하자마자 main으로 전환**한다 (그래야 stop hook이 작업 브랜치를 원격에 복제 push하지 않음).
 
 ```bash
-pwd                                       # 레포 루트인지 확인
-ls content/posts/ | sort -r | head -7     # 최근 7개 날짜 폴더 (dedup용)
+git checkout main                              # 자동 생성된 claude/* 브랜치 무시
+ls content/posts/ | sort -r | head -7          # 최근 7개 날짜 폴더 (dedup용)
 ```
 
 ### 1. KST 날짜 계산
@@ -37,7 +36,7 @@ ls content/posts/ | sort -r | head -7     # 최근 7개 날짜 폴더 (dedup용)
 DATE=$(TZ=Asia/Seoul date +%Y-%m-%d)
 ```
 
-라우틴 컨테이너는 UTC 기본이므로 명시적 KST 변환 필수. UTC 새벽에 돌면 날짜가 어제로 밀린다.
+라우틴 컨테이너는 UTC 기본이라 KST 명시 변환 필수. UTC 새벽에 돌면 날짜가 어제로 밀린다.
 
 ### 2. 이전 주제 파악 (중복 방지)
 
@@ -49,7 +48,7 @@ DATE=$(TZ=Asia/Seoul date +%Y-%m-%d)
 
 ### 4. 뉴스 기반 카테고리는 web_search 필수
 
-`issue`, `economy`, `tech` 세 카테고리는 **오늘 자 뉴스를 web_search로 반드시 확인**한 뒤 작성. 기억에만 의존 금지.
+`issue`, `economy`, `tech` 세 카테고리는 **오늘 자 뉴스를 web_search로 반드시 확인**한 뒤 작성.
 
 ### 5. 각 글 본문 작성
 
@@ -66,20 +65,23 @@ content/posts/$DATE/07-essay.md
 
 폴더가 없으면 생성. 각 파일은 아래 프론트매터로 시작.
 
-### 7. commit & push
+### 7. commit & push (main) + 잔여 정리
 
 ```bash
+# main에 commit & push
 git add content/posts/$DATE/
 git commit -m "Morning brief: $DATE"
 git push origin main
+
+# 자동 생성된 claude/* 작업 브랜치 잔재 제거 (stop hook 복제 push 방지)
+for b in $(git branch | grep -E '^\s*claude/'); do
+  git branch -D "$b" 2>/dev/null || true
+done
 ```
 
 **보고 규칙:**
-- 성공 시: 커밋 해시(첫 7자) + "Vercel 자동 배포 1-2분" 안내
-- 실패 시: `git push`의 stderr를 그대로 보고. 추측·일반론 금지.
-  - `claude/*` 브랜치 권한 에러(`denied to ...`) → 루틴 설정의 **"Allow unrestricted branch pushes"** 가 꺼져 있음. 사용자에게 켜라고 안내.
-  - branch protection 에러 → main에 보호 규칙이 걸려 있음. 사용자에게 예외 추가 또는 PR 방식 전환 안내.
-- **PR 분기/claude/* 브랜치 우회 금지** — 이 라우틴은 사용자가 명시적으로 main 직접 publish를 위해 만든 자동화. 우회는 자동화의 의미를 깬다.
+- 성공 시: 커밋 해시(첫 7자) + "Vercel 자동 배포 1-2분"
+- 실패 시: `git push`의 stderr를 그대로 보고. 추측 금지.
 
 ---
 
@@ -100,8 +102,6 @@ git push origin main
 ---
 
 ## 프론트매터 (필수)
-
-모든 `.md` 파일은 다음 YAML 프론트매터로 시작:
 
 ```yaml
 ---
@@ -193,6 +193,7 @@ tags: ["천문학", "암흑물질"]    # 1-3개
 
 ## 필수 체크리스트 (push 직전)
 
+- [ ] `git checkout main` 으로 main 브랜치에서 작업 중
 - [ ] `DATE=$(TZ=Asia/Seoul date +%Y-%m-%d)` 로 KST 날짜
 - [ ] `content/posts/$DATE/` 폴더에 7개 파일 (`01-issue.md` ~ `07-essay.md`)
 - [ ] 모든 파일에 프론트매터 7개 필드
@@ -202,6 +203,7 @@ tags: ["천문학", "암흑물질"]    # 1-3개
 - [ ] 글 간 교차 참조 없음
 - [ ] 본문 H1(`#`) 없음
 - [ ] 최근 30일 인물/책/사건/개념 중복 없음
+- [ ] push 후 로컬 claude/* 브랜치 정리 완료
 
 ---
 
@@ -233,5 +235,5 @@ tags: ["천문학", "암흑물질"]    # 1-3개
 - 길이 채우기용 반복
 - 같은 비유/표현 여러 글에 반복
 - "오늘 다룬 7편을 정리하면..." 같은 메타 발언
-- **PR 분기/`claude/*` 브랜치로 우회** — 이 라우틴은 main 직접 publish를 위한 것. 우회 금지.
-- **권한 에러 자체 우회 시도** (PAT 박기, Python API 등) — 정상 경로는 `git push origin main` 하나. 막히면 사용자에게 "Allow unrestricted branch pushes" 토글 확인 안내.
+- **`claude/*` 브랜치에 작업·push** — 이 라우틴은 main 전용. 0단계에서 main으로 전환했으니 그대로 main에서 끝내기.
+- **PR 분기로 우회** — 자동 publish가 목적. PR 중간 단계 만들면 자동화 무의미.
