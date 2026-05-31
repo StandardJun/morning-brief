@@ -1,4 +1,4 @@
-# 마스터 프롬프트 v3: 생각하는 아침 (Daily Edition)
+# 마스터 프롬프트 v4: 생각하는 아침 (Daily Edition)
 
 > Claude Code Routine으로 실행. 매일 7개의 독립 `.md` 파일을 `StandardJun/morning-brief` GitHub 레포에 커밋·푸시. Vercel이 자동 배포.
 
@@ -6,12 +6,54 @@
 
 ## 사전 조건 (라우틴 환경 셋업 — 한 번만)
 
-이 프롬프트는 라우틴 컨테이너에 **GitHub 쓰기 권한**이 이미 설정되어 있다고 가정한다. 둘 중 하나가 필요:
+라우틴 컨테이너는 매번 새로 뜨고, 기본적으로 SSH 도구도 없고 GitHub 쓰기 권한도 없다. 이 세 가지(키 생성·등록·Setup script)를 라우틴 *설정* 단에서 한 번만 박아두면 평생 간다.
 
-- **Deploy Key (권장)**: `morning-brief` repo Settings → Deploy keys 에 SSH 공개키를 *Allow write access* 체크하고 등록. 개인키는 라우틴 env secret으로 주입되어 `~/.ssh/id_ed25519`에 배치.
-- **Fine-grained PAT**: `morning-brief` repo, Contents: Read+Write 권한. env에 `GITHUB_TOKEN`으로 주입.
+### A. 로컬에서 Deploy Key 한 쌍 생성
 
-권한 없이 실행하면 7단계(푸시)에서 무조건 실패하고 글은 컨테이너와 함께 사라진다.
+```bash
+ssh-keygen -t ed25519 -f ./mb_deploy_key -N ""
+# 결과: mb_deploy_key (개인키), mb_deploy_key.pub (공개키)
+```
+
+### B. GitHub에 공개키 등록
+
+`StandardJun/morning-brief` → **Settings → Deploy keys → Add deploy key**:
+- Title: `routine-deploy` (아무거나)
+- Key: `mb_deploy_key.pub` 내용 (`ssh-ed25519 AAAA...`)
+- **Allow write access ✅ 필수** (체크 안 하면 푸시 거부됨)
+
+### C. 라우틴 secret 등록
+
+라우틴 환경 변수(secret)에:
+- 이름: `DEPLOY_KEY`
+- 값: `mb_deploy_key` **개인키 전체 내용** (`-----BEGIN OPENSSH PRIVATE KEY-----`부터 `-----END OPENSSH PRIVATE KEY-----`까지, 마지막 줄바꿈 포함)
+
+### D. 라우틴 Setup script (세션 시작 시 자동 실행)
+
+라우틴의 **Setup script** 항목에 아래를 통째로 넣는다:
+
+```bash
+# 1) SSH 도구 보장 (라우틴 컨테이너에 ssh가 없을 수 있음)
+command -v ssh >/dev/null || (apt-get update -y && apt-get install -y openssh-client)
+
+# 2) Deploy Key 배치
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+chmod 600 ~/.ssh/id_ed25519
+
+# 3) GitHub host key 등록 (StrictHostKeyChecking 회피)
+ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+```
+
+> **체크포인트**: `DEPLOY_KEY` secret 값 끝에 줄바꿈 1개 필수. 없으면 `invalid format` 에러. `printf '%s\n'`이 그걸 보장해준다.
+
+### 대안: Fine-grained PAT (Deploy Key 사용 불가 시)
+
+`morning-brief` repo, Contents: Read+Write 권한 토큰 발급 → env `GITHUB_TOKEN`으로 주입. Setup script 불필요. 단 모든 git URL을 `https://x-access-token:$GITHUB_TOKEN@github.com/StandardJun/morning-brief.git` 형태로 사용해야 하며, 0단계와 7단계의 SSH URL을 이 형태로 치환할 것.
+
+### 이 셋업이 안 돼 있으면
+
+7단계(푸시)가 무조건 실패하고, 생성된 7편의 글은 컨테이너 종료와 함께 영구 소실된다. 라우틴 첫 실행 전에 반드시 위 A~D를 완료할 것.
 
 ---
 
@@ -23,16 +65,19 @@
 
 ## 작업 흐름
 
-### 0. 작업 디렉토리 셋업
+### 0. 작업 디렉토리 셋업 + remote sanity check
 
 ```bash
 cd /tmp   # 또는 라우틴 기본 작업 디렉토리
 rm -rf morning-brief 2>/dev/null   # 재실행 안전망
 git clone git@github.com:StandardJun/morning-brief.git
 cd morning-brief
+git remote -v   # 확인: origin이 git@github.com:StandardJun/morning-brief.git 인지
 ```
 
-이후 모든 경로는 이 레포 루트 기준. (HTTPS+PAT 방식이면 URL을 `https://x-access-token:$GITHUB_TOKEN@github.com/StandardJun/morning-brief.git` 로 치환.)
+**주의**: 일부 라우틴 환경은 이미 레포를 clone해 둔 디렉토리에서 시작하는데, 그때 `origin`이 `http://local_proxy@.../` 같은 **읽기전용 HTTP 프록시**로 박혀 있을 수 있다. 그 경우 push가 403으로 죽는다. `git remote -v`에서 origin이 `git@github.com:` 으로 시작하지 않으면 7단계의 `set-url` 한 줄이 그걸 SSH로 교체해준다(이미 SSH면 무해).
+
+이후 모든 경로는 이 레포 루트 기준.
 
 ### 1. 오늘 날짜를 KST 기준으로 확인
 
@@ -76,6 +121,7 @@ content/posts/$DATE/07-essay.md
 ### 7. 커밋 & 푸시 (이 단계 누락 시 사이트 반영 안 됨)
 
 ```bash
+git remote set-url origin git@github.com:StandardJun/morning-brief.git   # ← 프록시 remote 안전장치 (이미 SSH면 무해)
 git add content/posts/$DATE/
 git commit -m "Morning brief: $DATE"
 git push origin main
@@ -83,7 +129,10 @@ git push origin main
 
 **보고 규칙:**
 - 푸시 성공 시: 커밋 해시(첫 7자) + "사이트 반영까지 1-2분" 안내
-- 푸시 실패 시: `git push` 실제 출력 전체를 그대로 보고. 절대 "푸시 못함" 같은 일반 템플릿 멘트로 덮지 말 것. 추측·일반론 금지.
+- 푸시 실패 시 (특히 403/permission):
+  1. `git push`의 실제 출력 전체를 그대로 보고. 절대 "푸시 못함" 같은 일반 템플릿 멘트로 덮지 말 것. 추측·일반론 금지.
+  2. 같은 권한 에러로 재시도하지 말 것. 원인은 외부(Setup script/Deploy Key)이므로 재시도는 노이즈만 만듦.
+  3. **컨테이너 종료 시 7편 영구 소실 위험 알림** + 사용자에게 "7편 본문을 채팅 출력에 그대로 풀어드릴까요?" 옵션 제시. 사용자가 ㅇ하면 7개 파일 전문(프론트매터 포함)을 코드블록으로 출력 → 사용자가 다른 세션에서 살릴 수 있도록.
 
 ---
 
@@ -265,6 +314,8 @@ tags: ["천문학", "암흑물질"]
 
 ## 필수 체크리스트 (푸시 직전에 확인)
 
+- [ ] `~/.ssh/id_ed25519` 존재 + 권한 600 (Setup script가 박았는지)
+- [ ] `git remote -v`에서 origin이 `git@github.com:StandardJun/morning-brief.git`
 - [ ] `DATE=$(TZ=Asia/Seoul date +%Y-%m-%d)` 로 KST 날짜 계산
 - [ ] `content/posts/$DATE/` 폴더에 7개 파일 모두 존재 (`01-issue.md` ~ `07-essay.md`)
 - [ ] 모든 파일에 프론트매터 7개 필드 (title/date/category/order/readingTime/summary/tags)
