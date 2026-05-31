@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#111111"/>
+  <!-- 떠오르는 해 -->
+  <path d="M 176 312 A 80 80 0 0 1 336 312" fill="none" stroke="#f0e9dc" stroke-width="14" stroke-linecap="round"/>
+  <!-- 지평선 -->
+  <line x1="136" y1="312" x2="376" y2="312" stroke="#f0e9dc" stroke-width="14" stroke-linecap="round"/>
+  <!-- 짧은 빛줄기 -->
+  <line x1="256" y1="176" x2="256" y2="156" stroke="#caa86a" stroke-width="12" stroke-linecap="round"/>
+  <line x1="328" y1="200" x2="342" y2="186" stroke="#caa86a" stroke-width="12" stroke-linecap="round"/>
+  <line x1="184" y1="200" x2="170" y2="186" stroke="#caa86a" stroke-width="12" stroke-linecap="round"/>
+</svg>

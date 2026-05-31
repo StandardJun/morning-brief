@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    /* 폰트는 layout.tsx의 <link>로 로드되고, 여기서 스택을 정의한다.
+       폰트 로드 실패/오프라인 시 system serif·sans로 자연스럽게 폴백. */
+    --font-sans: "Noto Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-serif: "Noto Serif KR", Georgia, "Times New Roman", serif;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-stone-50 text-stone-900 dark:bg-ink dark:text-stone-100;
+  }
+}
+
+@layer components {
+  /* 본문(prose) 안의 코드 블록 — 항상 다크 톤 배경.
+     highlight.js github-dark 테마가 색을 입히고, 여기서 박스 스타일을 준다. */
+  .prose pre {
+    @apply my-6 overflow-x-auto rounded-xl bg-[#0d1117] p-4 text-[14px] leading-relaxed ring-1 ring-stone-800/60;
+  }
+  .prose pre code {
+    @apply bg-transparent p-0 text-inherit;
+    font-weight: 400;
+  }
+
+  /* 인라인 코드 */
+  .prose :not(pre) > code {
+    @apply rounded-md bg-stone-200/70 px-1.5 py-0.5 text-[0.9em] font-medium text-stone-800 dark:bg-stone-800/70 dark:text-stone-200;
+  }
+  .prose :not(pre) > code::before,
+  .prose :not(pre) > code::after {
+    content: "";
+  }
+
+  /* 인용구 — 좌측 보더 + 들여쓰기 */
+  .prose blockquote {
+    @apply border-l-2 pl-5 not-italic font-normal;
+  }
+
+  /* 이미지 — 둥근 모서리 */
+  .prose img {
+    @apply mx-auto rounded-xl;
+  }
+
+  /* 본문 링크 — 은은한 밑줄 */
+  .prose a {
+    @apply font-medium underline decoration-stone-300 underline-offset-2 transition-colors hover:decoration-stone-500 dark:decoration-stone-600 dark:hover:decoration-stone-400;
+  }
+}
